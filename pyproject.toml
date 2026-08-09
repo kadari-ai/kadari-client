@@ -9,7 +9,7 @@
 
 [project]
 name = "kadari"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local capture client for Kadari -- record your LLM calls to a local log for cost analysis."
 requires-python = ">=3.11"
 dependencies = []          # none — by design (stdlib only)

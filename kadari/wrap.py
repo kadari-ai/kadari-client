@@ -17,6 +17,7 @@ never break your production call (fail open on the host), exactly like ``record`
 
 from __future__ import annotations
 
+import inspect
 from typing import Callable
 
 from .capture import LiveRecorder
@@ -31,6 +32,23 @@ def wrap(create: Callable, *, provider: str, recorder: LiveRecorder,
     """
     if provider not in ("openai", "anthropic"):
         raise ValueError("provider must be 'openai' or 'anthropic'")
+
+    # An async client's `create` returns a COROUTINE, not a response. The capture path then
+    # fails to convert it, `_notify` fires, and the call is silently not recorded -- once
+    # per LLM request, with a line of stderr each time. The user believes they are capturing
+    # and their log stays empty, which is the worst way for this to fail: quietly, and only
+    # discovered when the log turns out to be worthless.
+    #
+    # So refuse HERE. `wrap()` is configuration, not the host's call path -- raising at
+    # setup is loud, immediate, and costs no production request. This is the one place in
+    # the client where raising is the right answer; everywhere downstream still fails open.
+    if inspect.iscoroutinefunction(create):
+        raise TypeError(
+            "wrap() received an async callable. Capturing an async client is not supported "
+            "in this version -- the wrapper would record nothing and say so once per call. "
+            "Await the call yourself and record it explicitly instead:\n"
+            "    resp = await client.chat.completions.create(...)\n"
+            "    rec.record_openai(id=None, input=text, response=resp.to_dict())")
 
     def wrapped(*args, **kwargs):
         resp = create(*args, **kwargs)        # the real call -- untouched, result returned as-is

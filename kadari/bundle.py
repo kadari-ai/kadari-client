@@ -24,7 +24,7 @@ import re
 import zipfile
 from pathlib import Path
 
-from . import __version__
+from . import __version__, _safeio, logs
 
 # Best-effort pattern scrubbing. Stated plainly: this is a convenience, NOT a compliance
 # control. It catches the shapes that show up in support and catalog traffic; it cannot
@@ -61,8 +61,16 @@ def _scrubber(hits: dict):
         if isinstance(v, list):
             return [scrub(x) for x in v]
         if isinstance(v, dict):
-            # Keys are structure (field names, tool names); values are content.
-            return {k: (v[k] if k in ("name",) else scrub(v[k])) for k in v}
+            # Keys are structure; VALUES are content, all of them.
+            #
+            # This used to exempt any value stored under the key "name", to protect tool
+            # names from being scrubbed. It protected nothing: `_redact_row` only ever hands
+            # this function `e["arguments"]`, so a tool's own `name` never reaches it. What
+            # the exemption actually did was pass through every ARGUMENT called `name` --
+            # `{"name": "Jane Smith"}` -- verbatim, out of an archive whose manifest says
+            # `"redacted": true`. `name` is close to the most likely key for exactly the PII
+            # a sender is redacting for.
+            return {k: scrub(v[k]) for k in v}
         return v
 
     return scrub
@@ -93,7 +101,11 @@ def build(log_path: str | Path, out_path: str | Path, *, report_text: str,
     unparseable = 0
     if redact:
         lines = []
-        for line in raw.splitlines():
+        # NOT `splitlines()` -- see `logs.split_records`. It used to be, and a prompt
+        # containing U+2028 was torn in half, leaving the call as two corrupt lines inside
+        # an archive whose manifest said "redacted". The plain path never had the bug, so
+        # --redact destroyed data that doing nothing preserved.
+        for line in logs.split_records(raw):
             stripped = line.strip()
             if not stripped or stripped.startswith("//"):
                 lines.append(line)
@@ -124,6 +136,14 @@ def build(log_path: str | Path, out_path: str | Path, *, report_text: str,
         # a sender reads to decide whether to upload -- beside the word "redacted".
         # Scrubbed with the SAME function, so the guarantee is identical to the log's.
         preflight = _scrubber(hits)(preflight)
+        # And the report, for the same reason. It is aggregates rather than prompts, so the
+        # exposure is far smaller than the log's -- but it carries model names taken
+        # verbatim from the log, the archive says "redacted" without qualifying WHICH files,
+        # and a claim that holds for two of three files is not a claim. One function, one
+        # guarantee, every byte in the zip.
+        report_text, h = redact_text(report_text)
+        for k, n in h.items():
+            hits[k] = hits.get(k, 0) + n
     else:
         payload = raw
 
@@ -157,8 +177,11 @@ def build(log_path: str | Path, out_path: str | Path, *, report_text: str,
     }
     manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+    # The densest file of customer data this tool produces, so it is created owner-only and
+    # never through a symlink -- same rules as the log (see kadari._safeio).
+    _safeio.secure_makedirs(out_path.parent)
+    with _safeio.secure_open(out_path, "wb") as raw_out, \
+            zipfile.ZipFile(raw_out, "w", compression=zipfile.ZIP_DEFLATED) as z:
         # Fixed timestamps: a bundle built twice from the same log is byte-identical, so a
         # sender can verify for themselves that nothing varies between runs.
         for name, data in (("capture.jsonl", payload),

@@ -21,9 +21,11 @@ refuse a submission before it is uploaded rather than after.
 from __future__ import annotations
 
 import csv
+import io
 import json
 from pathlib import Path
 
+from .. import logs
 from ..capture import OMITTED_LABEL
 from ..timestamps import to_iso
 
@@ -191,7 +193,7 @@ def _rows_from(path: Path):
                     return
             yield obj
             return
-        for line in text.splitlines():                    # JSONL
+        for line in logs.split_records(text):              # JSONL
             line = line.strip()
             if line and not line.startswith("//"):
                 try:
@@ -201,7 +203,9 @@ def _rows_from(path: Path):
                 if isinstance(r, dict):
                     yield r
         return
-    yield from csv.DictReader(text.splitlines())
+    # StringIO, not splitlines(): the csv module must see the stream itself or a
+    # quoted field containing a newline is torn into two bogus rows.
+    yield from csv.DictReader(io.StringIO(text, newline=""))
 
 
 def read_generic(path, *, default_model: str | None = None):

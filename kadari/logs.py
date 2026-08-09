@@ -22,6 +22,27 @@ from pathlib import Path
 from .prices import approx_output_tokens, approx_tokens
 from .timestamps import to_iso
 
+
+def split_records(text: str) -> list[str]:
+    """Split JSONL held in one string into records, on newlines ONLY.
+
+    ``str.splitlines()`` is the obvious call and the wrong one. It also breaks on U+2028,
+    U+2029, \\x0b, \\x0c, \\x1c-\\x1e and \\x85 -- none of which terminate a line in JSON, and
+    all of which are legal *inside* a JSON string. U+2028 in particular is ordinary in text
+    pasted from a web page. Split that way, one record becomes two fragments that either
+    fail to parse or, in the importers, are dropped without a count.
+
+    Reading through the file object (``readlines()``) already behaves correctly, so this is
+    only needed where a whole file was slurped into a single string.
+
+    The writer deliberately still emits U+2028 raw: it is valid JSON, every conforming
+    parser accepts it, and escaping on write would only hide the defect from readers that
+    still split wrongly.
+    """
+    if text.endswith("\n"):
+        text = text[:-1]
+    return [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
+
 MAX_RECORD_CHARS = 200_000        # mirrors the writer's ceiling
 MAX_WARNINGS = 50                 # bound what we accumulate on a pathological file
 

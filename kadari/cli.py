@@ -22,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import __version__, analyze, bundle, logs, preflight, prices, report
+from . import __version__, _safeio, analyze, bundle, logs, preflight, prices, report
 from .capture import WIRE_VERSION
 
 _SAMPLE = Path(__file__).with_name("sample_capture.jsonl")
@@ -71,7 +71,9 @@ def cmd_analyze(args) -> int:
     print(report.render_text(model))
     if args.out:
         out = Path(args.out)
-        out.write_text(report.render_html(model), encoding="utf-8")
+        # Derived from the log, so it carries the same data and gets the same mode.
+        with _safeio.secure_open(out, "w", encoding="utf-8") as fh:
+            fh.write(report.render_html(model))
         # Deliberately NOT opened for you: launching a browser needs a module the client
         # is forbidden to import, and a tool that promises to open no connection should
         # not be starting programs either.
@@ -87,7 +89,8 @@ def cmd_demo(args) -> int:
     model, _ = _model(_SAMPLE, table)
     print(report.render_text(model))
     out = Path(args.out or "kadari_demo_report.html")
-    out.write_text(report.render_html(model, title="Sample spend report"), encoding="utf-8")
+    with _safeio.secure_open(out, "w", encoding="utf-8") as fh:
+        fh.write(report.render_html(model, title="Sample spend report"))
     print(f"Wrote {out}  — this is synthetic data shipped with the package, not yours.")
     print("Point `kadari analyze` at your own log to see the real thing.")
     return EXIT_OK
@@ -106,7 +109,7 @@ def cmd_import(args) -> int:
             print(f"  (!) {w}", file=sys.stderr)
         _die(f"nothing importable in {args.file}")
     out = Path(args.out)
-    with open(out, "w", encoding="utf-8") as fh:
+    with _safeio.secure_open(out, "w", encoding="utf-8") as fh:
         fh.write("// " + json.dumps({"kadari_log": {
             # Read from the one constant, never spelled again here. An import writes the
             # same records `capture` does -- including, since 0.4, the cache buckets --

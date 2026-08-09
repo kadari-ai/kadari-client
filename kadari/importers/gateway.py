@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .. import logs
 from ..capture import OMITTED_LABEL
 from ..timestamps import to_iso
 
@@ -101,7 +102,7 @@ def read(path):
     with_text = 0
     unreadable_ts = 0
     seq = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in logs.split_records(path.read_text(encoding="utf-8")):
         line = line.strip()
         if not line or line.startswith("//"):
             continue

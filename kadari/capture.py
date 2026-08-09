@@ -37,13 +37,17 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import sys
 import threading
 import uuid
+import weakref
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+
+from . import _safeio
 
 # ── The stable wire contract (rule 6: the SDK contract is near-immutable) ─────
 # A captured line is a flat JSON object the Kadari engine ingests verbatim:
@@ -72,6 +76,31 @@ from typing import Callable
 # the same shape on its side (a contract test in the engine repo guards against drift).
 WIRE_VERSION = "0.4"
 MAX_RECORD_CHARS = 200_000   # denial-of-local-resource ceiling (fail closed above it)
+
+# How long a record may wait for the writer lock before it is dropped instead. Recording is
+# a side-channel; it is allowed to lose a row and never allowed to hold the caller. Five
+# seconds is far above any honest contention on a local append and far below the point where
+# a wedged lock would look like a hung request.
+LOCK_TIMEOUT_S = 5.0
+
+# ── fork safety ──────────────────────────────────────────────────────────────────
+# A `threading.Lock` held at `fork()` is inherited LOCKED by the child, and the thread that
+# would have released it does not exist there -- so the child's first `record()` waits on a
+# lock nobody can ever unlock. Pre-fork servers (gunicorn, celery, uwsgi) hit this whenever
+# a call is recorded before workers are forked. The LOCK_TIMEOUT_S above already stops that
+# being fatal, but a five-second stall on every call in every worker is its own outage, so
+# the lock is replaced outright in the child, where exactly one thread exists and doing so
+# is safe. A WeakSet so a recorder that goes out of scope is not kept alive by this.
+_LIVE_RECORDERS: "weakref.WeakSet" = weakref.WeakSet()
+
+
+def _reset_locks_after_fork() -> None:
+    for recorder in list(_LIVE_RECORDERS):
+        recorder._lock = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):     # absent on Windows
+    os.register_at_fork(after_in_child=_reset_locks_after_fork)
 
 # When a record is too large to write whole, we shed CONTENT before we shed the CALL.
 # Dropping the call entirely would under-count spend exactly where the money is -- the
@@ -394,6 +423,7 @@ class LiveRecorder:
         self.on_error = on_error or _default_on_error
         self._now = _now or _utc_now
         self._lock = threading.Lock()
+        _LIVE_RECORDERS.add(self)       # so a fork can re-create the lock in the child
         self._seen_ids: set[str] = set()
         self._manifest_done = False
         self._rng = random.Random()   # sampling only; never touches the recorded data
@@ -496,12 +526,20 @@ class LiveRecorder:
                 raise CaptureError(
                     f"record is {len(line)} chars (> {self.max_chars}); refusing to "
                     f"write an abnormally large line")
-            with self._lock:
+            # Bounded, never indefinite. Blocking is a worse failure than dropping: a
+            # dropped record costs one row in a spend report, a held lock costs the host's
+            # request. Anything that wedges this lock -- a fork that raced a write, a
+            # writer stalled on a full disk -- times out into the ordinary fail-open path.
+            if not self._lock.acquire(timeout=LOCK_TIMEOUT_S):
+                raise CaptureError(
+                    f"could not acquire the recorder lock within {LOCK_TIMEOUT_S}s; "
+                    f"dropping this record rather than holding the caller")
+            try:
                 if call_id in self._seen_ids:
                     raise CaptureError(
                         f"duplicate id {call_id!r}: already recorded this session "
                         f"(a captured log is rejected on a repeated id)")
-                self.path.parent.mkdir(parents=True, exist_ok=True)
+                _safeio.secure_makedirs(self.path.parent)
                 # Manifest first, and only into an EMPTY file: appending one mid-log would
                 # describe records it does not cover.
                 header = ""
@@ -509,9 +547,13 @@ class LiveRecorder:
                     self._manifest_done = True
                     if not self.path.exists() or self.path.stat().st_size == 0:
                         header = self._manifest_line()
-                with open(self.path, "a", encoding="utf-8") as fh:   # append = crash-safe
+                # append = crash-safe; owner-only on creation, and never through a symlink
+                # or onto a pipe (see kadari._safeio).
+                with _safeio.secure_open(self.path, "a", encoding="utf-8") as fh:
                     fh.write(header + line + "\n")
                 self._seen_ids.add(call_id)
+            finally:
+                self._lock.release()
             return True
         except Exception as exc:  # noqa: BLE001 -- fail OPEN: never break the host call
             if self.strict:

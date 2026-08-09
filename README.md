@@ -109,8 +109,22 @@ to claim a number on your task, and we would rather say so than estimate one.
   always valid and loadable.
 - **Local-first.** This library never opens a network connection. Your prompts and outputs
   stay in the local file you named; nothing is uploaded by `kadari`.
+- **Owner-only on disk.** "Local" is not the same as "private", so since 0.3.1 every file
+  this tool creates — the capture log, the `bundle` zip, the rendered report, an imported
+  log — is created `0600`, inside directories created `0700`. Before 0.3.1 they inherited
+  the process umask, which on the usual default meant **world-readable**: any other account
+  on a shared host, a sidecar sharing the volume, or a backup agent running as another uid
+  could read your production prompts.
+  A file you created yourself keeps whatever mode you gave it — tightening applies only to
+  files `kadari` creates, because a mode you set deliberately is a decision, not a mistake.
+  The log path is also never followed through a symlink, and must be a regular file.
 - **Privacy controls.** `redact=` scrubs each input — and each tool-call argument value —
   before it is written; `sample=` records only a fraction of calls to bound log size.
+  `redact=` applies to what is *written*; `kadari bundle --redact` additionally scrubs the
+  log, the manifest and the text report on the way into the archive. Both are best-effort
+  pattern matching (emails, IPs, card- and phone-like digit runs, token-shaped strings) —
+  a convenience, **not** a compliance control. Neither can recognise a name or an internal
+  identifier it has no pattern for.
 
 ```python
 rec = LiveRecorder("kadari_capture.jsonl", sample=0.1, redact=my_scrubber)
