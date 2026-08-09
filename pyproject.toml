@@ -1,0 +1,82 @@
+# The Kadari CAPTURE CLIENT -- the only package shipped to a customer.
+#
+# Built SEPARATELY from the engine (this directory contains no engine source), so a
+# published wheel cannot contain Kadari's IP -- it is capture glue only. Zero runtime
+# dependencies (stdlib only): nothing to audit, nothing to phone home, trivial to vendor
+# into a customer's environment. License is Apache-2.0 (founder decision 2026-06-22):
+# the client carries no IP, so it is permissively licensed to maximise "safe to read,
+# trivial to vendor" trust -- the moat is the data flywheel + neutrality, not this glue.
+
+[project]
+name = "kadari"
+version = "0.3.0"
+description = "Local capture client for Kadari -- record your LLM calls to a local log for cost analysis."
+requires-python = ">=3.11"
+dependencies = []          # none — by design (stdlib only)
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Kadari", email = "support.kadari@gmail.com" },
+]
+maintainers = [
+    { name = "Kadari", email = "support.kadari@gmail.com" },
+]
+keywords = [
+    "llm", "openai", "anthropic", "observability", "cost", "logging",
+    "capture", "inference", "classification",
+]
+classifiers = [
+    # NB: no "License :: OSI Approved :: ..." trove classifier -- PEP 639 forbids it
+    # alongside the SPDX `license = "Apache-2.0"` expression above (newer setuptools
+    # errors on the combination); the SPDX expression is the single source of truth.
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Logging",
+    "Typing :: Typed",
+]
+
+# These render as the "Project links" sidebar on the PyPI page, so every one of them
+# must RESOLVE for an anonymous visitor. The engine repo is private by design (the
+# client carries no IP, the engine does), so we deliberately do NOT advertise a
+# `Repository` link: a 404 on the PyPI page reads as abandonware and undercuts the
+# "safe to read, trivial to vendor" trust the client exists to earn.
+#
+# No `Issues` key either: PEP 621 validation requires every value here to be a real
+# URL (a `mailto:` is rejected at build time), and there is no public tracker yet.
+# Contact is not lost -- PyPI renders the `maintainers` email above as a mailto link
+# in the project's Meta section, and the README carries it too.
+#
+# No `Documentation` key: it would only duplicate Homepage, and the README below IS
+# the documentation -- PyPI renders it as the project description on the same page.
+[project.urls]
+Homepage = "https://kadari.ai/"
+
+# The console script: `kadari analyze ...` after a plain `pip install kadari`.
+[project.scripts]
+kadari = "kadari.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["kadari*"]
+
+# Ship the PEP 561 inline-types marker inside the wheel so downstream type checkers
+# pick up kadari's hints (Typing :: Typed) -- and the price table, which is DATA the
+# report is rendered from, not code. Without it here the wheel installs but every
+# dollar figure reports as unpriced.
+[tool.setuptools.package-data]
+kadari = ["py.typed", "prices.json", "sample_capture.jsonl"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

@@ -1,0 +1,51 @@
+# This directory becomes the PUBLIC repository (ADR-0006), so it carries its own ignore
+# rules rather than relying on the engine repo's root `.gitignore` -- that file does not
+# travel through the split, and the first commit of a public repo cannot be un-made.
+#
+# What this prevents, concretely: `git init && git add .` in a freshly copied `client/`
+# would otherwise commit `.DS_Store` (local Finder metadata), `dist/` (previously built
+# wheels + sdists), `build/lib/kadari/` (a second, stale copy of every source file) and
+# `kadari.egg-info/` -- permanently, on a repo whose history is public forever.
+#
+# `packaging_check.py::check_public_repo_hygiene` asserts every pattern below is still
+# here, so deleting one fails CI rather than quietly re-opening the hole.
+
+# Python build + bytecode
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Environments
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# OS metadata -- leaks local directory structure and is pure noise in a diff
+.DS_Store
+Thumbs.db
+
+# Secrets. The client needs no credential to run and must never carry one (rule 7);
+# this is belt-and-braces for anyone who forks it into their own environment.
+.env
+.env.*
+*.key
+
+# A contributor's own capture log is their production traffic. Never commit one.
+*.jsonl
+!kadari/sample_capture.jsonl
+
+# `kadari bundle` writes a zip of production prompts. It is the single densest file of
+# customer data this tool produces, it is binary (so the guard's textual scan cannot read
+# it), and it lands wherever the user ran the command. `git add .` must never stage one.
+*.zip
+kadari_demo_report.html
+report.html

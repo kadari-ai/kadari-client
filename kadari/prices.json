@@ -1,0 +1,297 @@
+{
+  "schema_version": "1",
+  "as_of": "2026-08-05",
+  "_readme": [
+    "Published list prices, per million tokens, USD. This file is a DATED SNAPSHOT of a",
+    "moving target: providers add, reprice, and retire models continuously. Every report",
+    "rendered from it states `as_of` and the share of calls it could actually price.",
+    "",
+    "A model absent from `models` is NOT priced at zero. It is reported as unpriced: its",
+    "calls and tokens are counted, its dollars are omitted, and the report says so. Never",
+    "guess a rate to make a total look complete.",
+    "",
+    "`rates` is a list of dated periods because prices change and a spend report prices",
+    "HISTORICAL calls. `from`/`to` are inclusive ISO dates; null means open-ended. When a",
+    "call carries no timestamp, the period covering `as_of` is used and the report labels",
+    "the figure as priced at current rates.",
+    "",
+    "`ladder` names an intra-provider rung ordering (premium first, cheapest last) used only",
+    "for the price-differential ceiling. A null ladder means we have not reasoned about that",
+    "model's rungs and no ceiling is computed for it. Ladders never cross providers.",
+    "",
+    "`aliases` maps an API model id ONTO an entry in `models`. It exists because a provider",
+    "response reports the id it actually served, which is not always the name a human types:",
+    "Anthropic's pre-4.6 generation answers with a dated snapshot (`claude-haiku-4-5` ->",
+    "`claude-haiku-4-5-20251001`), so a log captured straight from the API would otherwise",
+    "read as entirely unpriced. Every entry is TRANSCRIBED from the provider's own model",
+    "table, one line at a time -- there is no prefix matching, no date-stripping, and no",
+    "'looks like a Haiku' rule. An id we have not transcribed stays unpriced, which is the",
+    "honest answer; a guessed one would be a wrong dollar figure with our name on it.",
+    "",
+    "Override with `kadari analyze --prices my-rates.json` if you hold negotiated pricing.",
+    "Corrections are welcome as pull requests; include the source URL and the date checked."
+  ],
+  "sources": [
+    {
+      "provider": "openai",
+      "url": "https://developers.openai.com/api/docs/pricing",
+      "checked": "2026-08-05"
+    },
+    {
+      "provider": "anthropic",
+      "url": "https://platform.claude.com/docs/en/about-claude/models/overview.md",
+      "checked": "2026-08-05"
+    }
+  ],
+  "providers": {
+    "openai": {
+      "cached_input_is_explicit": true
+    },
+    "anthropic": {
+      "cache_read_multiplier": 0.1,
+      "cache_write_multiplier": 1.25,
+      "_note": "Anthropic publishes cache rates as multiples of the input rate rather than as separate per-model figures."
+    }
+  },
+  "ladders": {
+    "gpt-5.6": ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+    "gpt-5.5": ["gpt-5.5-pro", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"],
+    "gpt-5": ["gpt-5-pro", "gpt-5", "gpt-5-mini", "gpt-5-nano"],
+    "claude-5": ["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"],
+    "claude-4": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
+  },
+  "_ladder_notes": {
+    "gpt-5.5": "gpt-5.5-mini and gpt-5.5-nano do not exist (verified 2026-08-05). The GPT-5.5 ladder's cheap rungs are the 5.4 generation, which is intra-provider and therefore in scope."
+  },
+  "aliases": {
+    "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+    "claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+    "claude-opus-4-5-20251101": "claude-opus-4-5",
+    "claude-opus-4-1-20250805": "claude-opus-4-1",
+    "gpt-5.6": "gpt-5.6-sol"
+  },
+  "_omitted": {
+    "_why_this_block_exists": "A model missing from `models` is normally just a model nobody has transcribed yet, and the readme above invites corrections as pull requests. That makes a DELIBERATE absence indistinguishable from an oversight — so the deliberate ones are recorded here with their reason, and re-adding one is a decision rather than a tidy-up.",
+    "claude-mythos-5": "Removed 2026-08-05 (founder call). Invitation-only within Project Glasswing, and offered for defensive cybersecurity work — a high-stakes vertical that ADR-0001 puts out of scope. Anyone with access to it is not the naive-heavy-spender ICP this table serves, and listing it in a public price table implies we price and reason about traffic we have deliberately not entered. A holder who runs the tool anyway sees those calls reported as UNPRICED — counted, dollars omitted, share stated — which is the correct answer for a model we do not serve, not a failure.",
+    "claude-mythos-preview": "Never listed. Same programme; and its pricing is not published, so listing it would require a guess.",
+    "bedrock_and_vertex_ids": "See `_alias_notes.cloud_resellers` — those platforms publish their own rates, so pricing that traffic from this table would be a number the customer cannot reconcile against their invoice."
+  },
+  "_alias_notes": {
+    "_source": "Anthropic entries transcribed from the 'Claude API ID' / 'Claude API alias' rows of the models overview (checked 2026-08-05); `gpt-5.6` -> `gpt-5.6-sol` from OpenAI's models page (checked 2026-08-05).",
+    "anthropic": "Only the pre-4.6 generation carries a dated id. From Claude 4.6 onward the API ID is dateless and identical to the alias (claude-opus-5, claude-sonnet-5, claude-sonnet-4-6, ...), so those need no alias entry -- they are already table keys.",
+    "openai_dated_snapshots": "OpenAI dated snapshots are deliberately NOT aliased. Its pricing page prices them independently -- `gpt-4o` is $2.50/$10 while `gpt-4o-2024-05-13` is $5.00/$15.00 -- so folding a snapshot onto its base name would halve a real bill. A snapshot we hold a published rate for is listed in `models` with its own rate; one we do not is reported unpriced.",
+    "cloud_resellers": "Bedrock (`anthropic.claude-sonnet-4-5-20250929-v1:0`) and Vertex (`claude-sonnet-4-5@20250929`) ids are NOT aliased either: those platforms publish their own pricing, so charging that traffic at Claude API rates would be a number the customer cannot reconcile against their invoice."
+  },
+  "models": {
+    "gpt-5.6-sol": {
+      "provider": "openai", "ladder": "gpt-5.6",
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 30.0, "cached_input_per_m": 0.5}]
+    },
+    "gpt-5.6-terra": {
+      "provider": "openai", "ladder": "gpt-5.6",
+      "rates": [{"from": null, "to": null, "input_per_m": 2.0, "output_per_m": 12.0, "cached_input_per_m": 0.2}]
+    },
+    "gpt-5.6-luna": {
+      "provider": "openai", "ladder": "gpt-5.6",
+      "rates": [{"from": null, "to": null, "input_per_m": 0.2, "output_per_m": 1.2, "cached_input_per_m": 0.02}]
+    },
+    "gpt-5.5-pro": {
+      "provider": "openai", "ladder": "gpt-5.5",
+      "rates": [{"from": null, "to": null, "input_per_m": 30.0, "output_per_m": 180.0}]
+    },
+    "gpt-5.5": {
+      "provider": "openai", "ladder": "gpt-5.5",
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 30.0, "cached_input_per_m": 0.5}]
+    },
+    "gpt-5.4-pro": {
+      "provider": "openai", "ladder": "gpt-5.5",
+      "rates": [{"from": null, "to": null, "input_per_m": 30.0, "output_per_m": 180.0}]
+    },
+    "gpt-5.4": {
+      "provider": "openai", "ladder": "gpt-5.5",
+      "rates": [{"from": null, "to": null, "input_per_m": 2.5, "output_per_m": 15.0, "cached_input_per_m": 0.25}]
+    },
+    "gpt-5.4-mini": {
+      "provider": "openai", "ladder": "gpt-5.5",
+      "rates": [{"from": null, "to": null, "input_per_m": 0.75, "output_per_m": 4.5, "cached_input_per_m": 0.075}]
+    },
+    "gpt-5.4-nano": {
+      "provider": "openai", "ladder": "gpt-5.5",
+      "rates": [{"from": null, "to": null, "input_per_m": 0.2, "output_per_m": 1.25, "cached_input_per_m": 0.02}]
+    },
+    "gpt-5.3-chat-latest": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.75, "output_per_m": 14.0}]
+    },
+    "gpt-5.3-codex": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.75, "output_per_m": 14.0}]
+    },
+    "gpt-5.2-chat-latest": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.75, "output_per_m": 14.0}]
+    },
+    "gpt-5.5-cyber": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 12.5, "output_per_m": 75.0}]
+    },
+    "gpt-5-search-api": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.25, "output_per_m": 10.0}]
+    },
+    "gpt-5.2-pro": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 21.0, "output_per_m": 168.0}]
+    },
+    "gpt-5.2": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.75, "output_per_m": 14.0, "cached_input_per_m": 0.175}]
+    },
+    "gpt-5.1": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.25, "output_per_m": 10.0, "cached_input_per_m": 0.125}]
+    },
+    "gpt-5-pro": {
+      "provider": "openai", "ladder": "gpt-5",
+      "rates": [{"from": null, "to": null, "input_per_m": 15.0, "output_per_m": 120.0}]
+    },
+    "gpt-5": {
+      "provider": "openai", "ladder": "gpt-5",
+      "rates": [{"from": null, "to": null, "input_per_m": 1.25, "output_per_m": 10.0, "cached_input_per_m": 0.125}]
+    },
+    "gpt-5-mini": {
+      "provider": "openai", "ladder": "gpt-5",
+      "rates": [{"from": null, "to": null, "input_per_m": 0.25, "output_per_m": 2.0, "cached_input_per_m": 0.025}]
+    },
+    "gpt-5-nano": {
+      "provider": "openai", "ladder": "gpt-5",
+      "rates": [{"from": null, "to": null, "input_per_m": 0.05, "output_per_m": 0.4, "cached_input_per_m": 0.005}]
+    },
+    "chat-latest": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 30.0}]
+    },
+    "gpt-4.1": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 2.0, "output_per_m": 8.0}]
+    },
+    "gpt-4.1-mini": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 0.4, "output_per_m": 1.6}]
+    },
+    "gpt-4.1-nano": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 0.1, "output_per_m": 0.4}]
+    },
+    "gpt-4o": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 2.5, "output_per_m": 10.0}]
+    },
+    "gpt-4o-2024-05-13": {
+      "provider": "openai", "ladder": null,
+      "note": "Priced separately from `gpt-4o` by OpenAI ($5/$15 vs $2.50/$10) -- which is why an OpenAI dated snapshot is never aliased onto its base name.",
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 15.0}]
+    },
+    "gpt-4o-mini": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 0.15, "output_per_m": 0.6}]
+    },
+    "o1": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 15.0, "output_per_m": 60.0}]
+    },
+    "o1-pro": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 150.0, "output_per_m": 600.0}]
+    },
+    "o3": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 2.0, "output_per_m": 8.0}]
+    },
+    "o3-pro": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 20.0, "output_per_m": 80.0}]
+    },
+    "o3-mini": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.1, "output_per_m": 4.4}]
+    },
+    "o4-mini": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.1, "output_per_m": 4.4}]
+    },
+    "gpt-3.5-turbo": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 0.5, "output_per_m": 1.5}]
+    },
+    "gpt-3.5-turbo-0125": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 0.5, "output_per_m": 1.5}]
+    },
+    "gpt-3.5-turbo-1106": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.0, "output_per_m": 2.0}]
+    },
+    "gpt-3.5-turbo-instruct": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 1.5, "output_per_m": 2.0}]
+    },
+    "gpt-4-turbo-2024-04-09": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 10.0, "output_per_m": 30.0}]
+    },
+    "gpt-4-0613": {
+      "provider": "openai", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 30.0, "output_per_m": 60.0}]
+    },
+    "claude-fable-5": {
+      "provider": "anthropic", "ladder": "claude-5",
+      "rates": [{"from": null, "to": null, "input_per_m": 10.0, "output_per_m": 50.0}]
+    },
+    "claude-opus-5": {
+      "provider": "anthropic", "ladder": "claude-5",
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 25.0}]
+    },
+    "claude-sonnet-5": {
+      "provider": "anthropic", "ladder": "claude-5",
+      "note": "Introductory pricing through 2026-08-31, then $3/$15.",
+      "rates": [
+        {"from": null, "to": "2026-08-31", "input_per_m": 2.0, "output_per_m": 10.0, "label": "introductory"},
+        {"from": "2026-09-01", "to": null, "input_per_m": 3.0, "output_per_m": 15.0}
+      ]
+    },
+    "claude-haiku-4-5": {
+      "provider": "anthropic", "ladder": "claude-5",
+      "rates": [{"from": null, "to": null, "input_per_m": 1.0, "output_per_m": 5.0}]
+    },
+    "claude-opus-4-8": {
+      "provider": "anthropic", "ladder": "claude-4",
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 25.0}]
+    },
+    "claude-opus-4-7": {
+      "provider": "anthropic", "ladder": "claude-4",
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 25.0}]
+    },
+    "claude-opus-4-6": {
+      "provider": "anthropic", "ladder": "claude-4",
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 25.0}]
+    },
+    "claude-opus-4-5": {
+      "provider": "anthropic", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 5.0, "output_per_m": 25.0}]
+    },
+    "claude-sonnet-4-6": {
+      "provider": "anthropic", "ladder": "claude-4",
+      "rates": [{"from": null, "to": null, "input_per_m": 3.0, "output_per_m": 15.0}]
+    },
+    "claude-sonnet-4-5": {
+      "provider": "anthropic", "ladder": null,
+      "rates": [{"from": null, "to": null, "input_per_m": 3.0, "output_per_m": 15.0}]
+    },
+    "claude-opus-4-1": {
+      "provider": "anthropic", "ladder": null,
+      "note": "Deprecated; retires 2026-08-05.",
+      "rates": [{"from": null, "to": null, "input_per_m": 15.0, "output_per_m": 75.0}]
+    }
+  }
+}

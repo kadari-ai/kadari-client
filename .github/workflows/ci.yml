@@ -1,0 +1,88 @@
+# CI for the public `kadari` repository.
+#
+# This file lives in the client tree so it travels with the repo split and comes back with
+# the submodule -- the client tree stays one thing in both places. Inside Kadari's engine
+# monorepo it sits at `client/.github/`, which GitHub ignores (only a repository-ROOT
+# `.github/` is read), so it is inert there and active in the public repo. The engine repo
+# runs the same guard from its own workflow via `make client`.
+#
+# What this protects: `kadari/prices.json` invites corrections as pull requests, so this
+# repository takes outside commits. `packaging_check.py` is what keeps engine code, network
+# imports and customer data out of a tree whose history is permanent -- an unguarded PR is
+# the one path that could put any of them there.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: packaging guard (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor is what `requires-python = ">=3.11"` promises; the ceiling is what
+        # people actually run. Both, because the guard imports `tomllib` (3.11+) and the
+        # package claims to work across the range.
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # `build` AND `setuptools`, deliberately. `python -m build` provisions its own backend
+      # under isolation, so a venv without setuptools builds fine and looks healthy -- but
+      # `packaging_check.real_build_available()` requires BOTH, and without setuptools the
+      # strongest check (a genuine build with IP assertions on the produced wheel) silently
+      # downgrades to a static smoke test while still printing OK and ALL GREEN. That hole
+      # was live in Kadari's own release venv for weeks. Do not drop setuptools from this
+      # line to "slim down CI" -- it is the difference between a real check and a green one.
+      - name: Install build backend
+        run: python -m pip install --upgrade pip build setuptools
+
+      - name: Packaging + IP guard
+        run: python packaging_check.py
+
+      # The guard must be on its REAL path, not the fallback. Without this assertion a
+      # missing backend would turn the step above into a smoke test and CI would stay green
+      # while the wheel went unexamined -- a check that cannot fail is not a check.
+      - name: Assert the real build actually ran
+        run: |
+          python packaging_check.py | tee /tmp/guard.txt
+          if ! grep -q "real build clean" /tmp/guard.txt; then
+            echo "::error::packaging_check fell back to the stdlib smoke test -- the wheel was never built or inspected."
+            grep -n "build backend" /tmp/guard.txt || true
+            exit 1
+          fi
+
+      # Zero runtime dependencies is a promise this package makes on its front page. Install
+      # the built wheel into a clean environment and read back what came with it.
+      - name: Install the built wheel and prove it is dependency-free
+        run: |
+          python -m build --outdir dist
+          python -m venv /tmp/verify
+          /tmp/verify/bin/python -m pip install --quiet dist/*.whl
+          /tmp/verify/bin/python -c "import kadari; print('version', kadari.__version__)"
+          installed=$(/tmp/verify/bin/python -m pip list --format=freeze | grep -v '^pip==' | grep -v '^setuptools==' | grep -v '^wheel==')
+          echo "installed beyond pip/setuptools/wheel: ${installed:-<nothing>}"
+          if [ "$installed" != "kadari==$(/tmp/verify/bin/python -c 'import kadari;print(kadari.__version__)')" ]; then
+            echo "::error::the wheel pulled in something beyond kadari itself: $installed"
+            exit 1
+          fi
+
+      # The first thing anyone runs. It reads the shipped sample log with the shipped
+      # renderer, so it exercises both data files as well as the CLI entry point.
+      - name: Smoke test the console script
+        run: |
+          cd /tmp && /tmp/verify/bin/kadari version && /tmp/verify/bin/kadari demo
