@@ -35,9 +35,24 @@ jobs:
         python-version: ["3.11", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to immutable commit SHAs, not to `@v4`/`@v5`. A version tag is MUTABLE: whoever
+      # controls the action repository can repoint it at any commit, and every workflow that
+      # trusts the tag runs the new code on the next push with no diff here to review. That is
+      # the standard supply-chain attack on CI, and it lands hardest exactly here -- this
+      # workflow is the ONLY gate on outside pull requests to `kadari/prices.json`, whose
+      # numbers become customer dollar figures and feed a hard spend cap. An action that can
+      # make this job report green when it should report red defeats every check below it.
+      #
+      # Read the comment as the version, the SHA as the truth. To upgrade, resolve the new tag
+      # to its SHA and change both -- never loosen it back to a tag to make an upgrade easier.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262      # v4.4.0
+        with:
+          # The price-diff gate below compares against the base branch, so the base commit
+          # has to be in the clone. The default checkout is a depth-1 snapshot of the merge
+          # ref and does not contain it.
+          fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -53,6 +68,16 @@ jobs:
 
       - name: Packaging + IP guard
         run: python packaging_check.py
+
+      # `packaging_check.py` proves the price table is well FORMED. It cannot prove a NUMBER
+      # in it is believable -- planting seven defects showed six caught and a rate multiplied
+      # by ten straight through. These numbers arrive by pull request from outside, become a
+      # customer's dollar figures, and feed the projection a hard spend cap is enforced
+      # against, so a plausible-looking wrong one is the defect that matters. Pull requests
+      # only: there is no base to diff against on a push to main.
+      - name: Price table change is plausible
+        if: github.event_name == 'pull_request'
+        run: python price_diff_check.py --base "origin/${{ github.base_ref }}"
 
       # The guard must be on its REAL path, not the fallback. Without this assertion a
       # missing backend would turn the step above into a smoke test and CI would stay green

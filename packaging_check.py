@@ -205,7 +205,55 @@ _TRANSIENT_DIRS = frozenset({
 # package that ships -- so `kadari/packaging_check.py` could have imported `socket` and
 # passed. An exemption is a hole whether or not anyone has walked through it; this one is
 # now exactly one file wide.
-_NETWORK_SCAN_EXEMPT = frozenset({"packaging_check.py"})   # POSIX paths, relative to HERE
+#
+# `price_diff_check.py` joined it for the same reason: it is CI-only tooling at the repository
+# root, it must shell out to `git show` to read the price table on the base branch, and it is
+# absent from both the sdist and the wheel (verified by building, not by reading the config).
+# Two entries is still a hole twice as wide as one, so the list is no longer merely trusted --
+# `_check_exemptions_are_real()` below refuses to run on a stale or shipped exemption.
+_NETWORK_SCAN_EXEMPT = frozenset({                         # POSIX paths, relative to HERE
+    "packaging_check.py",
+    "price_diff_check.py",
+})
+
+
+def _check_no_exemption_covers_shipping_code() -> None:
+    """No exemption may name a path inside the package.
+
+    A property of the LIST, not of any tree, so it holds wherever the guard is pointed. An
+    entry under `kadari/` would exempt code that ships to users from the network rule, which
+    is the only place the rule matters -- and it is reachable in practice, because the
+    basename-keyed version of this list did exactly that for any file named
+    `packaging_check.py`, including one inside the package.
+    """
+    for rel in sorted(_NETWORK_SCAN_EXEMPT):
+        if rel.startswith(f"{PKG.name}/"):
+            _fail(f"_NETWORK_SCAN_EXEMPT names {rel!r}, which is INSIDE the package and ships "
+                  f"to users. The network rule exists for exactly those files; an exemption "
+                  f"there is not a scoped allowance, it is the rule switched off.")
+
+
+def check_exemptions_are_not_stale() -> None:
+    """Every exemption must name a file this repository actually scans.
+
+    A question about the REAL tree, which is why it runs from `main()` rather than inside
+    `guard_no_engine_no_network()` -- the tests re-point that function at a throwaway
+    directory holding one planted file, where a legitimate exemption is legitimately absent.
+    Asking a whole-repo question inside a per-tree scan made an honest fixture look like a
+    violation, which is its own kind of false alarm.
+
+    The failure it does catch: an entry left behind after the file was renamed or deleted. It
+    exempts nothing today and silently covers whatever is created under that name tomorrow --
+    the same shape as a provenance divergence declared for a file that no longer diverges.
+    """
+    shipped = {p.relative_to(HERE).as_posix() for p in _shipped_files()}
+    stale = sorted(rel for rel in _NETWORK_SCAN_EXEMPT if rel not in shipped)
+    if stale:
+        _fail(f"_NETWORK_SCAN_EXEMPT names {stale}, which this tree does not contain. Remove "
+              f"the entry -- an exemption for a file that is not here exempts nothing now and "
+              f"covers anything created under that name later.")
+    _ok(f"network-scan exemptions are live and none covers shipping code "
+        f"({len(_NETWORK_SCAN_EXEMPT)}: {', '.join(sorted(_NETWORK_SCAN_EXEMPT))})")
 
 # Binary/opaque suffixes the textual scan cannot meaningfully read. Kept short on purpose:
 # anything not listed here is scanned as UTF-8, and a file that will not decode is a
@@ -262,6 +310,7 @@ def guard_no_engine_no_network() -> None:
     py_files = [p for p in files if p.suffix == ".py"]
     if not py_files:
         _fail("no client source files found under kadari/")
+    _check_no_exemption_covers_shipping_code()
     for path in files:
         rel = path.relative_to(HERE)
         if path.suffix in _BINARY_SUFFIXES:
@@ -499,6 +548,7 @@ def main() -> int:
     check_metadata()
     check_version_consistency()
     check_marker_and_license()
+    check_exemptions_are_not_stale()
     check_price_table()
     check_public_repo_hygiene()
     check_isolated_import()
